@@ -105,6 +105,10 @@ import jdk.internal.util.ArraysSupport;
  * @see     LinkedList
  * @see     Vector
  * @since   1.2
+ * 
+ * 说白了ArrayList底层就是数组，一系列的增删改操作，都是对数组的操作，Arrays.copyOf进行浅拷贝
+ * Arrays.copyOf() 方法只会创建一个新数组，并将原始数组的内容复制到新数组中。
+ * 如果原始数组中的元素是引用类型，则新数组中的元素会指向相同的对象，而不是创建这些对象的副本。因此，它进行的是浅拷贝，不会复制引用对象本身
  */
 public class ArrayList<E> extends AbstractList<E>
         implements List<E>, RandomAccess, Cloneable, java.io.Serializable
@@ -1028,6 +1032,7 @@ public class ArrayList<E> extends AbstractList<E>
 
         /**
          * 判断是否还有下一个元素需要遍历，如果 cursor 不等于 size，则表示还有下一个元素
+         * 如果下一个访问元素的下标等于ArrayList的大小，则肯定到达末尾了
          */
         public boolean hasNext() {
             return cursor != size;
@@ -1036,28 +1041,34 @@ public class ArrayList<E> extends AbstractList<E>
         @SuppressWarnings("unchecked")
         public E next() {
             //检查是否有其他线程对 ArrayList 进行了修改
-            checkForComodification();
-            int i = cursor;
+            checkForComodification();//就因为这个检查，所以，循环中，删除list的时候，操作不当会发生ConcurrentModificationException异常
+            int i = cursor;//下一个元素的索引
             if (i >= size)
+                //检查游标是否超出了集合的大小。如果超出了，表示已经到达了集合的末尾，抛出 NoSuchElementException 异常
                 throw new NoSuchElementException();
-            Object[] elementData = ArrayList.this.elementData;
+            Object[] elementData = ArrayList.this.elementData;//获取内部数组
             if (i >= elementData.length)
+                //再次检查游标位置是否超出了内部数组的长度，如果超出了，
+                //说明在迭代过程中有其他线程修改了集合的大小，因此抛出 ConcurrentModificationException 异常。
                 throw new ConcurrentModificationException();
-            cursor = i + 1;
-            return (E) elementData[lastRet = i];
+            cursor = i + 1;//更新游标位置，指向下一个元素
+            return (E) elementData[lastRet = i];//返回当前元素，并将 lastRet 更新为当前元素的索引。lastRet 是一个记录上一个访问元素位置的变量，在迭代器中会用到
         }
 
         public void remove() {
             if (lastRet < 0)
+                //检查是否存在上一个返回的元素的索引，若为负数，则说明没有上一个元素，因此抛出 IllegalStateException 异常
                 throw new IllegalStateException();
             checkForComodification();
 
             try {
-                ArrayList.this.remove(lastRet);
-                cursor = lastRet;
-                lastRet = -1;
-                expectedModCount = modCount;
+                ArrayList.this.remove(lastRet);//remove方法进行了modCount++操作，所以下面要更新同步expectedModCount
+                //移除元素之后，角标位置向前进1位
+                cursor = lastRet;//更新游标位置，将其设置为上一个元素的索引，这样下一次调用 next() 方法时会返回上一个元素的下一个元素
+                lastRet = -1;//清除记录的上一个元素的索引
+                expectedModCount = modCount;//更新 expectedModCount 为当前 modCount，表示迭代器在修改集合后将其状态同步更新
             } catch (IndexOutOfBoundsException ex) {
+                //捕获 remove(int index) 方法可能抛出的 IndexOutOfBoundsException 异常，这是为了防止在迭代器操作时出现并发修改导致的数组越界异常。
                 throw new ConcurrentModificationException();
             }
         }
