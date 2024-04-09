@@ -233,8 +233,8 @@ public class HashMap<K,V> extends AbstractMap<K,V>
      */
 
     /**
-     * The default initial capacity - MUST be a power of two.
-     */    //默认的初始容量是16
+     * 默认的初始容量是16
+     */
     static final int DEFAULT_INITIAL_CAPACITY = 1 << 4; // aka 16
 
     /**
@@ -379,7 +379,7 @@ public class HashMap<K,V> extends AbstractMap<K,V>
     }
 
     /**
-     * Returns a power of two size for the given target capacity.
+     * 用于计算大于或等于给定整数值的最小的2的幂，该方法通常在初始化哈希表时用于确定哈希表的容量
      */
     static final int tableSizeFor(int cap) {
         int n = -1 >>> Integer.numberOfLeadingZeros(cap - 1);
@@ -401,8 +401,7 @@ public class HashMap<K,V> extends AbstractMap<K,V>
     transient Set<Map.Entry<K,V>> entrySet;
 
     /**
-     * 存放元素的个数，注意这个不等于数组的长度
-     * The number of key-value mappings contained in this map.
+     * 存放键值对的个数，注意这个不等于数组的长度
      */
     transient int size;
 
@@ -417,7 +416,7 @@ public class HashMap<K,V> extends AbstractMap<K,V>
     transient int modCount;
 
     /**
-     * 阈值(容量*负载因子：threshold = capacity * loadFactor) 当实际大小超过阈值时，会进行扩容
+     * 阈值 = (容量*负载因子：threshold = capacity * loadFactor) 当实际大小超过阈值时，会进行扩容
      * 当 Size>threshold的时候，那么就要考虑对数组的扩增了，
      * 也就是说，它是衡量数组是否需要扩增的一个标准
      */
@@ -577,15 +576,23 @@ public class HashMap<K,V> extends AbstractMap<K,V>
      * @return the node, or null if none
      */
     final Node<K,V> getNode(Object key) {
+        //tab：引用当前hashMap的散列表
+        //first：桶位中的头元素
+        //e：临时node元素
+        //n：table数组长度
         Node<K,V>[] tab; Node<K,V> first, e; int n, hash; K k;
         if ((tab = table) != null && (n = tab.length) > 0 &&
             (first = tab[(n - 1) & (hash = hash(key))]) != null) {
+            //第一种情况：定位出来的桶位元素 即为咱们要get的数据
             if (first.hash == hash && // always check first node
                 ((k = first.key) == key || (key != null && key.equals(k))))
                 return first;
+            //说明当前桶位不止一个元素，可能 是链表 也可能是 红黑树
             if ((e = first.next) != null) {
+                //第二种情况：桶位升级成了 红黑树
                 if (first instanceof TreeNode)
                     return ((TreeNode<K,V>)first).getTreeNode(hash, key);
+                //第三种情况：桶位形成链表
                 do {
                     if (e.hash == hash &&
                         ((k = e.key) == key || (key != null && key.equals(k))))
@@ -636,47 +643,63 @@ public class HashMap<K,V> extends AbstractMap<K,V>
      */
     final V putVal(int hash, K key, V value, boolean onlyIfAbsent,
                    boolean evict) {
+        //tab：引用当前hashMap的数组
+        //p：表示当前散列表table的元素，路由寻址后，获取table中指定位置的元素
+        //n：表示散列表数组table的长度
+        //i：表示路由寻址 结果
         Node<K,V>[] tab; Node<K,V> p;
         int n, i; //n是table的长度
+        //-------------start-----延迟初始化逻辑，第一次调用putVal时会初始化hashMap对象中的最耗费内存的数组，new hashmap()不初始化数组
+        //延迟初始化就是你创建hashmap的时候，不初始化里面的table数组容器，等到第一次put的时候，在初始化这个table数组容器
         //获取 table 数组，并检查是否需要进行初始化或者扩容。如果 table 为 null 或者长度为0，则进行初始化或扩容，使得 table 的长度为2的幂，并更新 threshold
-        //初次put的时候进行初始化
         if ((tab = table) == null || (n = tab.length) == 0)
             n = (tab = resize()).length;
+        //-------------end-------延迟初始化逻辑，第一次调用putVal时会初始化hashMap对象中的最耗费内存的数组，new hashmap()不初始化数组
         //根据键的hash(哈希值)计算应该存放在 table 数组的哪个位置。这里使用 (n - 1) & hash 这个技巧来计算哈希值对应的数组索引，其中 n 是 table 的长度，这样可以保证哈希值在数组中分布均匀
-        //i = (n - 1) & hash 计算出应该存放在 table 数组的哪个位置
-        //p = tab[i = (n - 1) & hash]，获取该位置的值
+        //i = (n - 1) & hash --> 这个就是路由寻址算法，计算出应该存放在 table 数组的哪个位置，通过（table的长度-1）与运算（key的hash值）得到在table数组容器的角标位置i，这个位置i就是寻址结果
+        //p = tab[i = (n - 1) & hash] --> 代表当前的位置的元素，也就是table桶位的元素，可能是空，可能是有一个元素或者有一个红黑树或者有一个链表
         if ((p = tab[i = (n - 1) & hash]) == null)
-            //如果p为空，则直接创建一个新的节点并放置在该位置
+            //2.1如果p为空，说明该桶位没有元素，则直接put装进去
             tab[i] = newNode(hash, key, value, null);
-        else {
-            //如果p不是null，说明当前位置已经有节点存在，e 就是当前位置的节点(链表的头一个位置的元素)，表示当前位置已经存储了一个或多个节点
+        else {//2.2如果p不为空，则p = tab[i = (n - 1) & hash]，该位置可能是有一个元素或者有一个红黑树或者有一个链表
+            //e：不为null的话，找到了一个与当前要插入的key-value一致的key的元素，e 就是当前位置的节点(链表的头一个位置的元素)
+            //k：表示临时的一个key
             Node<K,V> e; K k;
-            //首先，判断该位置的节点是否与要插入的键值对匹配。如果匹配，则表示已存在相同的键，直接更新值即可
+
+            //2.2.1这是一个元素，表示桶位中的该元素，与你插入的元素的key完全一致，表示后续需要进行替换操作
             if (p.hash == hash &&
                 ((k = p.key) == key || (key != null && key.equals(k))))
-                e = p;
-            //如果不匹配，则根据情况选择链表处理还是树化处理：
+                e = p;//取出原来table中的p Node节点元素，复制给e
+
+                //2.2.2这是一个红黑树，如果此时p已经是红黑树了，做相应处理
             else if (p instanceof TreeNode)
                 //原有位置的元素就已经树化了，则直接put进去就行，即，如果该位置的节点为树节点，则调用 putTreeVal 方法在树中添加节点
                 e = ((TreeNode<K,V>)p).putTreeVal(this, tab, hash, key, value);
+                //2.2.3这是一个链表
             else {
+                //链表的情况，而且链表的头元素与我们要插入的key不一致
                 //否则，遍历链表，寻找是否已经存在相同的键。如果找到相同的键，则更新值；如果未找到相同的键，则在链表尾部添加新节点。
                 for (int binCount = 0; ; ++binCount) {
+                    //e = p.next，获取p的下一个元素赋值给e，
+                    //如果下面if条件成立的话，说明循环迭代到最后一个元素了，也没找到一个与你要插入的key一致的node，则需要加入到当前链表的末尾
                     if ((e = p.next) == null) {
                         //p的next为空，直接创建新节点并设置
                         p.next = newNode(hash, key, value, null);
-                        //判断是否需要树化
+                        //条件成立的话，说明当前链表的长度，达到树化标准8了，需要进行树化
                         if (binCount >= TREEIFY_THRESHOLD - 1) // -1 for 1st
+                            //树化操作
                             treeifyBin(tab, hash);
                         break;
                     }
+                    //条件成立的话，说明p的下一个元素找到了相同key的node元素，需要进行替换操作
                     if (e.hash == hash &&
                         ((k = e.key) == key || (key != null && key.equals(k))))
                         break;
+                    //将e赋值给p，则p.next就继续链表向下寻找了，然后再for循环
                     p = e;
                 }
             }
-            //如果已经存在相同的键，则根据 onlyIfAbsent 参数决定是否更新值，然后调用 afterNodeAccess 方法
+            //e不等于null，条件成立说明，table数组容器中，找到了一个与你插入元素key完全一致的数据，需要进行替换
             if (e != null) { // existing mapping for key
                 V oldValue = e.value;
                 if (!onlyIfAbsent || oldValue == null)
@@ -687,6 +710,7 @@ public class HashMap<K,V> extends AbstractMap<K,V>
         }
         //如果插入成功，则增加 modCount 和 size，并检查是否需要进行扩容。如果 size 大于 threshold，则进行扩容操作
         ++modCount;
+        //插入新元素，size自增，如果自增后的值大于扩容阈值，则触发扩容，size为键值对的数目
         if (++size > threshold)
             resize();
         afterNodeInsertion(evict);
@@ -701,47 +725,75 @@ public class HashMap<K,V> extends AbstractMap<K,V>
      * with a power of two offset in the new table.
      *
      * @return the table
+     *
+     * 为什么需要扩容？
+     * 为了解决哈希冲突导致的链化影响查询效率的问题，扩容会缓解该问题。每个桶位都是链表，查询起来很慢，链表查询慢，O1-On
      */
     final Node<K,V>[] resize() {
+        //oldTab：引用扩容前的哈希表
         Node<K,V>[] oldTab = table;
+        //oldCap：表示扩容之前table数组的长度
         int oldCap = (oldTab == null) ? 0 : oldTab.length;
+        //oldThr：表示扩容之前的扩容阈值，触发本次扩容的阈值
         int oldThr = threshold;
+        //newCap：扩容之后table数组的大小
+        //newThr：扩容之后，下次再次触发扩容的条件
         int newCap, newThr = 0;
+        //条件如果成立说明 hashMap中的散列表已经初始化过了，这是一次正常扩容
         if (oldCap > 0) {
+            //扩容之前的table数组大小已经达到 最大阈值后，则不扩容，且设置扩容条件为 int 最大值
             if (oldCap >= MAXIMUM_CAPACITY) {
                 threshold = Integer.MAX_VALUE;
                 return oldTab;
             }
+            //oldCap左移一位实现数值翻倍，并且赋值给newCap， newCap 小于数组最大值限制 且 扩容之前的默认容量 >= 16
+            //这种情况下，则 下一次扩容的阈值 等于当前阈值翻倍
             else if ((newCap = oldCap << 1) < MAXIMUM_CAPACITY &&
                      oldCap >= DEFAULT_INITIAL_CAPACITY)
                 newThr = oldThr << 1; // double threshold
         }
+        //oldCap == 0,说明hashMap中的散列表是null
+        //1.new HashMap(initCap, loadFactor);
+        //2.new HashMap(initCap);
+        //3.new HashMap(map); 并且这个map有数据
         else if (oldThr > 0) // initial capacity was placed in threshold
             newCap = oldThr;
         else {               // zero initial threshold signifies using defaults
             newCap = DEFAULT_INITIAL_CAPACITY;
             newThr = (int)(DEFAULT_LOAD_FACTOR * DEFAULT_INITIAL_CAPACITY);
         }
+        //newThr为零时，通过newCap和loadFactor计算出一个newThr
         if (newThr == 0) {
             float ft = (float)newCap * loadFactor;
             newThr = (newCap < MAXIMUM_CAPACITY && ft < (float)MAXIMUM_CAPACITY ?
                       (int)ft : Integer.MAX_VALUE);
         }
         threshold = newThr;
+        //创建出一个更长 更大的数组
         @SuppressWarnings({"rawtypes","unchecked"})
         Node<K,V>[] newTab = (Node<K,V>[])new Node[newCap];
         table = newTab;
+        //说明，hashMap本次扩容之前，table不为null
         if (oldTab != null) {
             for (int j = 0; j < oldCap; ++j) {
+                //当前node节点
                 Node<K,V> e;
+                //说明当前桶位中有数据，但是数据具体是 单个数据，还是链表 还是 红黑树 并不知道
                 if ((e = oldTab[j]) != null) {
+                    //方便JVM GC时回收内存
                     oldTab[j] = null;
+                    //第一种情况：当前桶位只有一个元素，从未发生过碰撞，这情况 直接计算出当前元素应存放在 新数组中的位置，然后
+                    //扔进去就可以了
                     if (e.next == null)
                         newTab[e.hash & (newCap - 1)] = e;
+                        //第二种情况：当前节点已经树化，本期先不讲，下一期讲，红黑树
                     else if (e instanceof TreeNode)
                         ((TreeNode<K,V>)e).split(this, newTab, j, oldCap);
                     else { // preserve order
+                        //第三种情况：桶位已经形成链表
+                        //低位链表：存放在扩容之后的数组的下标位置，与当前数组的下标位置一致。
                         Node<K,V> loHead = null, loTail = null;
+                        //高位链表：存放在扩容之后的数组的下表位置为 当前数组下标位置 + 扩容之前数组的长度
                         Node<K,V> hiHead = null, hiTail = null;
                         Node<K,V> next;
                         do {
