@@ -892,17 +892,28 @@ public class HashMap<K,V> extends AbstractMap<K,V>
      */
     final Node<K,V> removeNode(int hash, Object key, Object value,
                                boolean matchValue, boolean movable) {
+        //tab：引用当前hashMap中的散列表
+        //p：当前node元素
+        //n：表示散列表数组长度
+        //index：表示寻址结果
         Node<K,V>[] tab; Node<K,V> p; int n, index;
         if ((tab = table) != null && (n = tab.length) > 0 &&
             (p = tab[index = (n - 1) & hash]) != null) {
+            //说明路由的桶位是有数据的，需要进行查找操作，并且删除
+            //node：查找到的结果
+            //e：当前Node的下一个元素
             Node<K,V> node = null, e; K k; V v;
+            //第一种情况：当前桶位中的元素 即为 你要删除的元素
             if (p.hash == hash &&
                 ((k = p.key) == key || (key != null && key.equals(k))))
                 node = p;
             else if ((e = p.next) != null) {
-                if (p instanceof TreeNode)
+                //说明，当前桶位 要么是 链表 要么 是红黑树
+                if (p instanceof TreeNode)//判断当前桶位是否升级为 红黑树了
+                    //第二种情况，红黑树查找操作
                     node = ((TreeNode<K,V>)p).getTreeNode(hash, key);
                 else {
+                    //第三种情况，链表的情况
                     do {
                         if (e.hash == hash &&
                             ((k = e.key) == key ||
@@ -914,13 +925,17 @@ public class HashMap<K,V> extends AbstractMap<K,V>
                     } while ((e = e.next) != null);
                 }
             }
+            //判断node不为空的话，说明按照key查找到需要删除的数据了
             if (node != null && (!matchValue || (v = node.value) == value ||
                                  (value != null && value.equals(v)))) {
+                //第一种情况：node是树节点，说明需要进行树节点移除操作
                 if (node instanceof TreeNode)
                     ((TreeNode<K,V>)node).removeTreeNode(this, tab, movable);
+                //第二种情况：桶位元素即为查找结果，则将该元素的下一个元素放至桶位中
                 else if (node == p)
                     tab[index] = node.next;
                 else
+                    //第三种情况：将当前元素p的下一个元素 设置成 要删除元素的 下一个元素。
                     p.next = node.next;
                 ++modCount;
                 --size;
